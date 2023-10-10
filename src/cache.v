@@ -31,7 +31,9 @@ pub fn (mut c Cache) table(table string) !&CacheTable {
 			cleanup_interval: c.option.cleanup_interval
 		}
 		c.caches[table] = cache_table
-		spawn cache_table.expiration_check()
+		// spawn cache_table.expiration_check()
+		// GC Warning: Repeated allocation of very large block (appr. size 6860800):
+		//    May lead to memory leak and poor performance
 	}
 
 	return unsafe { c.caches[table] }

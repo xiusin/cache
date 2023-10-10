@@ -87,7 +87,7 @@ pub fn (mut ct CacheTable) expiration_check() {
 		for key in expire_keys {
 			ct.delete_internal(key) or {}
 		}
-		unsafe { expire_keys.reset() }
+		expire_keys.clear()
 		ct.unlock()
 	}
 }
