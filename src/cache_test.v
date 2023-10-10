@@ -13,24 +13,8 @@ fn test_cache() {
 
 	mut table := cacher.table('test')
 
-	table.set_item_callback(fn (item voidptr, typ string) {
-		match typ {
-			'string' {
-				mut typ := unsafe { &CacheItem[string](item) }
-				println(typ.key())
-			}
-			'int' {
-				mut typ := unsafe { &CacheItem[int](item) }
-				println(typ.key())
-			}
-			// 'cache.Person' {
-			// 	mut it := unsafe { &CacheItem[Person](item) }
-			// 	println(it.data())
-			// }
-			else {
-				println('unknown type: ${typ}')
-			}
-		}
+	table.set_item_callback(fn (mut item CacheItem) {
+		// dump("${item.key} - ${item.data().bytestr()}")
 	})
 
 	table.add('name', 'cache', time.second * 3)
@@ -40,25 +24,15 @@ fn test_cache() {
 
 	assert table.exists('name')
 
-	mut val := table.value[string]('name')!
+	mut val := table.value('name')!
 	assert val != unsafe { nil }
-
-	assert val.data() == 'cache'
-	val.set_data('world')
-	assert val.data() == 'world'
-
-	mut val1 := table.value[string]('name')!
-	assert val1.data() == 'world'
+	assert val.json[string]()! == 'cache'
+	mut val1 := table.value('name')!
+	assert val.string()! == 'cache'
 	assert ptr_str(val1) == ptr_str(val)
 
-	table.value[int]('name') or {
-		eprintln('${err}')
-		assert err.msg().contains('&CacheItem[int]')
-	}
-
-	table.value[string]('name') or {
-		println('${err}')
-		assert err.msg().contains('&CacheItem[string]')
-		panic(err)
-	}
+	mut person := table.value('person')!
+	assert person.json[Person]()!.name == 'John'
+	dump(person.json[string]()!) // need panic
+	dump(person.json[int]()!) // need panic
 }

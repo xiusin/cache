@@ -2,50 +2,58 @@ module cache
 
 import sync
 import time
+import json
+import v.reflection
 
 pub interface CacheItemInterface {
 	ttl() time.Duration
 	last_accessed_on() time.Time
 }
 
+// JSON library is unable to directly decode/encode the resulting string. Therefore, this structure is built-in to handle such cases.
+[noinit]
+pub struct CacheData[T] {
+	data T
+}
+
 [heap; noinit]
-pub struct CacheItem[T] {
+pub struct CacheItem {
 	sync.RwMutex
 mut:
 	key              string
-	data             T
+	data             []u8
 	ttl              time.Duration
 	created_on       time.Time
 	last_accessed_on time.Time
 	access_count     u64
-	remove_expire_fn []fn (voidptr)
-	d_typ            int
-	init             bool
+	remove_expire_fn []fn (&CacheItem)
+	type_id          int
 }
 
-fn new_cache_item[T](key string, data T, ttl time.Duration) &CacheItem[T] {
+fn new_cache_item[T](key string, data T, ttl time.Duration) &CacheItem {
 	now := time.now()
-
-	// dump(T.name)
-	// t := reflection.get_type(T.idx) or {
-	// 	reflection.Type{name: 'unknown'}
-	// }
-	// dump(t.sym) // TODO 确认是否为指针类型
-
-	return &CacheItem[T]{
+	encode_data := json.encode(CacheData[T]{ data: data })
+	return &CacheItem{
 		key: key
-		data: data
 		ttl: ttl
 		created_on: now
 		last_accessed_on: now
 		access_count: 0
 		remove_expire_fn: []
-		d_typ: T.idx
-		init: true
+		type_id: T.idx
+		data: encode_data.bytes()
 	}
 }
 
-fn (mut item CacheItem[T]) keep_alive() {
+fn (item CacheItem) expired() bool {
+	if item.ttl == 0 {
+		return false
+	}
+
+	return time.since(item.last_accessed_on) >= item.ttl
+}
+
+fn (mut item CacheItem) keep_alive() {
 	item.@lock()
 	defer {
 		item.unlock()
@@ -55,44 +63,31 @@ fn (mut item CacheItem[T]) keep_alive() {
 	item.access_count++
 }
 
-pub fn (mut item CacheItem[T]) ttl() time.Duration {
+pub fn (item CacheItem) ttl() time.Duration {
 	return item.ttl
 }
 
-pub fn (mut item CacheItem[T]) created_on() time.Time {
+pub fn (item CacheItem) created_on() time.Time {
 	return item.created_on
 }
 
-pub fn (mut item CacheItem[T]) last_accessed_on() time.Time {
+pub fn (item CacheItem) last_accessed_on() time.Time {
 	return item.last_accessed_on
 }
 
-pub fn (mut item CacheItem[T]) access_count() u64 {
-	item.@rlock()
-	defer {
-		item.runlock()
-	}
-
+pub fn (item CacheItem) access_count() u64 {
 	return item.access_count
 }
 
-pub fn (mut item CacheItem[T]) key() string {
+pub fn (item CacheItem) key() string {
 	return item.key
 }
 
-pub fn (mut item CacheItem[T]) data() T {
+pub fn (item CacheItem) data() []u8 {
 	return item.data
 }
 
-pub fn (mut item CacheItem[T]) set_data(data T) {
-	item.@lock()
-	defer {
-		item.unlock()
-	}
-	item.data = data
-}
-
-pub fn (mut item CacheItem[T]) set_remove_expire_fn(f fn (voidptr)) {
+pub fn (mut item CacheItem) set_remove_expire_fn(f fn (&CacheItem)) {
 	item.@lock()
 	defer {
 		item.unlock()
@@ -101,7 +96,7 @@ pub fn (mut item CacheItem[T]) set_remove_expire_fn(f fn (voidptr)) {
 	item.remove_expire_fn << f
 }
 
-pub fn (mut item CacheItem[T]) add_remove_expire_fn(f fn (voidptr)) {
+pub fn (mut item CacheItem) add_remove_expire_fn(f fn (&CacheItem)) {
 	item.@lock()
 	defer {
 		item.unlock()
@@ -109,10 +104,28 @@ pub fn (mut item CacheItem[T]) add_remove_expire_fn(f fn (voidptr)) {
 	item.remove_expire_fn << f
 }
 
-pub fn (mut item CacheItem[T]) clear_remove_expire_fn() {
+pub fn (mut item CacheItem) clear_remove_expire_fn() {
 	item.@lock()
 	defer {
 		item.unlock()
 	}
 	item.remove_expire_fn = []
+}
+
+pub fn (mut item CacheItem) string() !string {
+	return item.json[string]()!
+}
+
+pub fn (item CacheItem) json[T]() !T {
+	// Why record type_id? Because currently, the JSON standard library does not throw an error when parsing a generic type incorrectly.
+	if item.type_id != T.idx {
+		return error('type error, type is: ${reflection.type_name(item.type_id)}')
+	}
+	origin_data := item.data.bytestr()
+	mut data := json.decode(CacheData[T], origin_data)!
+	return data.data
+}
+
+pub fn (item CacheItem) origin_data() string {
+	return item.data.bytestr()
 }
