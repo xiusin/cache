@@ -10,8 +10,12 @@ const err_key_not_found = error('Key not found in cache')
 pub struct CacheTable {
 	sync.RwMutex
 mut:
-	name             string
-	items            map[string]&CacheItem = map[string]&CacheItem{}
+	max_table_key int
+	name          string
+	// 目前发现如果高速插入数据会导致频繁扩容，GC侧导致读取item失败而崩溃
+	// If there are too many keys, it may potentially cause a memory leak. Optimization is needed。
+	// GC Warning: Repeated allocation of very large block (appr. size 6860800): May lead to memory leak and poor performance
+	items            shared map[string]&CacheItem = map[string]&CacheItem{}
 	cleanup_timer    time.Time     = time.now()
 	cleanup_interval time.Duration = time.second
 	add_item_after   []fn (&CacheItem)
@@ -49,19 +53,14 @@ pub fn (mut ct CacheTable) exists(key string) bool {
 	return key in ct.items
 }
 
-fn (mut ct CacheTable) add_internal(mut item CacheItem) &CacheItem {
+fn (mut ct CacheTable) add_internal(mut item CacheItem) !&CacheItem {
 	ct.@lock()
-	defer {
-		ct.unlock()
-	}
-
 	ct.items[item.key] = item
-	ct.log('Adding item with key ${item.key} and lifespan of ${item.ttl} to table ${ct.name}')
+	ct.unlock()
 
 	for callback in ct.add_item_after {
 		callback(item)
 	}
-
 	return item
 }
 
@@ -70,24 +69,20 @@ pub fn (mut ct CacheTable) expiration_check() {
 		ct.cleanup_interval = time.second
 	}
 
-	mut expire_keys := []string{}
 	for {
 		time.sleep(ct.cleanup_interval)
 		ct.@lock()
-
-		for key, item in ct.items { // Exception: EXC_BAD_ACCESS (code=1, address=0xf8)
-			if unsafe { item == nil } || item.ttl == 0 {
-				continue
-			}
-			if item.expired() {
-				expire_keys << key
+		mut expire_keys := []string{cap: 1024}
+		for key, item in ct.items {
+			if item != unsafe { nil } {
+				if item.ttl > 0 && item.expired() {
+					expire_keys << key
+				}
 			}
 		}
-
 		for key in expire_keys {
 			ct.delete_internal(key) or {}
 		}
-		expire_keys.clear()
 		ct.unlock()
 	}
 }
@@ -98,28 +93,33 @@ pub fn (mut ct CacheTable) delete(key string) ! {
 	ct.unlock()
 }
 
+[manualfree]
 fn (mut ct CacheTable) delete_internal(key string) ! {
 	if key !in ct.items {
 		return cache.err_key_not_found
 	}
 	mut item := unsafe { ct.items[key] }
+	defer {
+		unsafe {
+			free(item)
+		}
+	}
+
 	if unsafe { item == nil } {
 		return cache.err_key_not_found
 	}
-	item.@rlock()
-	defer {
-		item.runlock()
-	}
+
 	ct.items.delete(key)
-	ct.log('Deleting item with key ${key} created on ${item.created_on} and hit ${item.access_count} times from table ${ct.name}')
+	item.mutex.@rlock()
 	for callback in item.remove_expire_fn {
 		callback(item)
 	}
+	item.mutex.runlock()
 }
 
-pub fn (mut ct CacheTable) add[T](key string, data T, ttl time.Duration) &CacheItem[T] {
+pub fn (mut ct CacheTable) add[T](key string, data T, ttl time.Duration) !&CacheItem[T] {
 	mut item := new_cache_item[T](key, &data, ttl)
-	return ct.add_internal(mut item)
+	return ct.add_internal(mut item)!
 }
 
 pub fn (mut ct CacheTable) not_found_add[T](key string, data T, ttl time.Duration) bool {
@@ -132,8 +132,12 @@ pub fn (mut ct CacheTable) not_found_add[T](key string, data T, ttl time.Duratio
 		return true
 	}
 
+	if ct.max_table_key > 0 && ct.items.len >= ct.max_table_key {
+		return false
+	}
+
 	mut item := new_cache_item[T](key, &data, ttl)
-	_ = ct.add_internal(mut item)
+	_ = ct.add_internal(mut item) or { return false }
 	return true
 }
 

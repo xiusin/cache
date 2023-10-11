@@ -29,11 +29,10 @@ pub fn (mut c Cache) table(table string) !&CacheTable {
 		mut cache_table := &CacheTable{
 			name: table
 			cleanup_interval: c.option.cleanup_interval
+			max_table_key: c.option.max_table_key
 		}
 		c.caches[table] = cache_table
 		// spawn cache_table.expiration_check()
-		// GC Warning: Repeated allocation of very large block (appr. size 6860800):
-		//    May lead to memory leak and poor performance
 	}
 
 	return unsafe { c.caches[table] }

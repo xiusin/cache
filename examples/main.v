@@ -3,7 +3,6 @@ module main
 import xiusin.cache
 import time
 import rand
-import log
 import benchmark
 
 fn main() {
@@ -15,30 +14,25 @@ fn main() {
 
 	mut bench := benchmark.start()
 
-	mut i := 0
+	spawn fn [mut user] () ! {
+		mut i := 0
+		for {
+			if i > 500000 {
+				break
+			}
+			user.add('user_${i}', i, time.second * rand.intn(10)!) or {}
+			i++
+		}
+	}()
+
+	mut i := 500000
 	for {
 		if i > 1000000 {
 			break
 		}
-
-		// time.sleep(time.millisecond * 300)
-		user.add('user_${i}', i, time.second * rand.intn(10)!)
-		// // rand read
-		// user.value('user_${rand.intn(i) or { 0 }}') or {}
+		user.add('user_${i}', i, time.second * rand.intn(10)!)!
 		i++
-		//
-		// if i % 10 == 0 {
-		// 	println('==================')
-		// 	for j, accessed in user.top_accessed(3) {
-		// 		println('top: ${j} is ${accessed.key()} count: ${accessed.access_count()}')
-		// 	}
-		// 	println('current keys: ${user.count()}')
-		// 	println('')
-		// 	println('')
-		// 	println('')
-		// 	println('')
-		// 	println('')
-		// }
 	}
+
 	bench.measure('insert')
 }

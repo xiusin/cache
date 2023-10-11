@@ -18,8 +18,8 @@ pub struct CacheData[T] {
 
 [heap; noinit]
 pub struct CacheItem {
-	sync.RwMutex
 mut:
+	mutex            &sync.RwMutex = sync.new_rwmutex()
 	key              string
 	data             []u8
 	ttl              time.Duration
@@ -30,9 +30,15 @@ mut:
 	type_id          int
 }
 
+[manualfree]
 fn new_cache_item[T](key string, data T, ttl time.Duration) &CacheItem {
 	now := time.now()
 	encode_data := json.encode(CacheData[T]{ data: data })
+	defer {
+		unsafe {
+			encode_data.free()
+		}
+	}
 	return &CacheItem{
 		key: key
 		ttl: ttl
@@ -54,9 +60,9 @@ fn (item CacheItem) expired() bool {
 }
 
 fn (mut item CacheItem) keep_alive() {
-	item.@lock()
+	item.mutex.@lock()
 	defer {
-		item.unlock()
+		item.mutex.unlock()
 	}
 
 	item.last_accessed_on = time.now()
@@ -88,26 +94,26 @@ pub fn (item CacheItem) data() []u8 {
 }
 
 pub fn (mut item CacheItem) set_remove_expire_fn(f fn (&CacheItem)) {
-	item.@lock()
+	item.mutex.@lock()
 	defer {
-		item.unlock()
+		item.mutex.unlock()
 	}
 	item.remove_expire_fn = []
 	item.remove_expire_fn << f
 }
 
 pub fn (mut item CacheItem) add_remove_expire_fn(f fn (&CacheItem)) {
-	item.@lock()
+	item.mutex.@lock()
 	defer {
-		item.unlock()
+		item.mutex.unlock()
 	}
 	item.remove_expire_fn << f
 }
 
 pub fn (mut item CacheItem) clear_remove_expire_fn() {
-	item.@lock()
+	item.mutex.@lock()
 	defer {
-		item.unlock()
+		item.mutex.unlock()
 	}
 	item.remove_expire_fn = []
 }
