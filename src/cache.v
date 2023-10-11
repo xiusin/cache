@@ -21,18 +21,17 @@ pub fn (mut c Cache) table(table string) !&CacheTable {
 		c.unlock()
 	}
 
-	if c.option.max_table > 0 && c.option.max_table <= c.caches.len {
-		return error('The maximum number of data tables is ${c.option.max_table}')
-	}
-
 	if table !in c.caches {
+		if c.option.max_table > 0 && c.option.max_table <= c.caches.len {
+			return error('The maximum number of data tables is ${c.option.max_table}')
+		}
+
 		mut cache_table := &CacheTable{
 			name: table
 			cleanup_interval: c.option.cleanup_interval
-			max_table_key: c.option.max_table_key
 		}
 		c.caches[table] = cache_table
-		// spawn cache_table.expiration_check()
+		spawn cache_table.expiration_check()
 	}
 
 	return unsafe { c.caches[table] }

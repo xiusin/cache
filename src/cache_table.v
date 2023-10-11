@@ -1,6 +1,5 @@
 module cache
 
-import sync
 import time
 import log
 
@@ -8,7 +7,6 @@ const err_key_not_found = error('Key not found in cache')
 
 [heap; noinit]
 pub struct CacheTable {
-	sync.RwMutex
 mut:
 	max_table_key int
 	name          string
@@ -23,10 +21,6 @@ mut:
 }
 
 pub fn (mut ct CacheTable) set_logger(logger &log.ThreadSafeLog) {
-	ct.@lock()
-	defer {
-		ct.unlock()
-	}
 	ct.logger = unsafe { logger }
 }
 
@@ -37,26 +31,27 @@ pub fn (mut ct CacheTable) log(message string) {
 }
 
 pub fn (mut ct CacheTable) count() int {
-	ct.@rlock()
-	defer {
-		ct.runlock()
-	}
-
 	return ct.items.len
 }
 
 pub fn (mut ct CacheTable) exists(key string) bool {
-	ct.@rlock()
-	defer {
-		ct.runlock()
+	if key in ct.items {
+		item := unsafe { ct.items[key] }
+		if unsafe { item != nil } {
+			if item.expired() {
+				ct.delete_internal(key) or {}
+				return false
+			}
+			return true
+		}
 	}
-	return key in ct.items
+	return false
 }
 
 fn (mut ct CacheTable) add_internal(mut item CacheItem) !&CacheItem {
-	ct.@lock()
-	ct.items[item.key] = item
-	ct.unlock()
+	lock ct.items {
+		ct.items[item.key] = item
+	}
 
 	for callback in ct.add_item_after {
 		callback(item)
@@ -71,26 +66,26 @@ pub fn (mut ct CacheTable) expiration_check() {
 
 	for {
 		time.sleep(ct.cleanup_interval)
-		ct.@lock()
 		mut expire_keys := []string{cap: 1024}
-		for key, item in ct.items {
-			if item != unsafe { nil } {
-				if item.ttl > 0 && item.expired() {
-					expire_keys << key
+		rlock ct.items {
+			for key, item in ct.items {
+				if item != unsafe { nil } {
+					if item.ttl > 0 && item.expired() {
+						expire_keys << key
+					}
 				}
 			}
 		}
+
 		for key in expire_keys {
 			ct.delete_internal(key) or {}
 		}
-		ct.unlock()
+		ct.log('clear expired keys: ${expire_keys.len}')
 	}
 }
 
 pub fn (mut ct CacheTable) delete(key string) ! {
-	ct.@lock()
 	ct.delete_internal(key)!
-	ct.unlock()
 }
 
 [manualfree]
@@ -109,7 +104,10 @@ fn (mut ct CacheTable) delete_internal(key string) ! {
 		return cache.err_key_not_found
 	}
 
-	ct.items.delete(key)
+	lock ct.items {
+		ct.items.delete(key)
+	}
+
 	item.mutex.@rlock()
 	for callback in item.remove_expire_fn {
 		callback(item)
@@ -123,46 +121,31 @@ pub fn (mut ct CacheTable) add[T](key string, data T, ttl time.Duration) !&Cache
 }
 
 pub fn (mut ct CacheTable) not_found_add[T](key string, data T, ttl time.Duration) bool {
-	ct.@lock()
-	defer {
-		ct.unlock()
+	if !ct.exists(key) {
+		mut item := new_cache_item[T](key, &data, ttl)
+		_ = ct.add_internal(mut item) or { return false }
 	}
-
-	if key in ct.items {
-		return true
-	}
-
-	if ct.max_table_key > 0 && ct.items.len >= ct.max_table_key {
-		return false
-	}
-
-	mut item := new_cache_item[T](key, &data, ttl)
-	_ = ct.add_internal(mut item) or { return false }
 	return true
 }
 
 // flush deletes all items from this cache table.
 pub fn (mut ct CacheTable) flush() {
-	ct.@lock()
-	ct.logger.info('Flushing table ${ct.name}.')
-	for key, _ in ct.items {
-		ct.items.delete(key)
+	lock ct.items {
+		for key, _ in ct.items {
+			ct.items.delete(key)
+		}
+		ct.items.clear()
 	}
-	ct.items.clear()
-	ct.unlock()
 }
 
 pub fn (mut ct CacheTable) value(key string) !&CacheItem {
-	ct.@rlock()
-	defer {
-		ct.runlock()
-	}
-
-	if key in ct.items {
-		mut item := unsafe { ct.items[key] }
-		if !item.expired() {
-			item.keep_alive()
-			return item
+	lock {
+		if key in ct.items {
+			mut item := unsafe { ct.items[key] }
+			if !item.expired() {
+				item.keep_alive()
+				return item
+			}
 		}
 	}
 
@@ -170,36 +153,24 @@ pub fn (mut ct CacheTable) value(key string) !&CacheItem {
 }
 
 pub fn (mut ct CacheTable) set_item_callback(f fn (&CacheItem)) {
-	ct.@lock()
-	defer {
-		ct.unlock()
-	}
 	ct.add_item_after = []
 	ct.add_item_after << f
 }
 
 pub fn (mut ct CacheTable) add_item_callback(f fn (&CacheItem)) {
-	ct.@lock()
-	defer {
-		ct.unlock()
-	}
 	ct.add_item_after << f
 }
 
 pub fn (mut ct CacheTable) clear_item_callback() {
-	ct.@lock()
-	defer {
-		ct.unlock()
-	}
 	ct.add_item_after = []
 }
 
 pub fn (mut ct CacheTable) iter(callback fn (&CacheItem)) {
-	ct.@rlock()
-	for _, v in ct.items {
-		callback(v)
+	lock ct.items {
+		for _, v in ct.items {
+			callback(v)
+		}
 	}
-	ct.runlock()
 }
 
 struct ItemCount {
@@ -208,27 +179,27 @@ struct ItemCount {
 }
 
 pub fn (mut ct CacheTable) top_accessed(count i64) []&CacheItem {
-	ct.@rlock()
-	mut item_count_arr := []ItemCount{len: ct.items.len}
-	for _, item in ct.items {
-		if unsafe { item == nil } {
-			continue
-		}
-		item_count_arr << ItemCount{
-			key: item.key
-			count: item.access_count
-		}
-	}
-	item_count_arr.sort(b.count < a.count)
-	item_count_arr = item_count_arr[0..count].clone()
 	mut items := []&CacheItem{}
-	for item in item_count_arr {
-		value := unsafe { ct.items[item.key] }
-		if unsafe { value != nil } {
-			items << value
+
+	lock ct.items {
+		mut item_count_arr := []ItemCount{len: ct.items.len}
+		for _, item in ct.items {
+			if unsafe { item == nil } {
+				continue
+			}
+			item_count_arr << ItemCount{
+				key: item.key
+				count: item.access_count
+			}
+		}
+		item_count_arr.sort(b.count < a.count)
+		item_count_arr = item_count_arr[0..count].clone()
+		for item in item_count_arr {
+			value := unsafe { ct.items[item.key] }
+			if unsafe { value != nil } {
+				items << value
+			}
 		}
 	}
-
-	ct.runlock()
 	return items
 }

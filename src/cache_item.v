@@ -127,9 +127,7 @@ pub fn (item CacheItem) json[T]() !T {
 	if item.type_id != T.idx {
 		return error('type error, type is: ${reflection.type_name(item.type_id)}')
 	}
-	origin_data := item.data.bytestr()
-	mut data := json.decode(CacheData[T], origin_data)!
-	return data.data
+	return json.decode(CacheData[T], item.data.bytestr())!.data
 }
 
 pub fn (item CacheItem) origin_data() string {
