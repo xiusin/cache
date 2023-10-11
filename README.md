@@ -1,7 +1,6 @@
 # cache
 
 [![Latest Release](https://img.shields.io/github/release/xiusin/cache.svg)](https://github.com/xiusin/cache/releases)
-[![Build Status](https://github.com/xiusin/cache/workflows/build/badge.svg)](https://github.com/xiusin/cache/actions)
 [![Coverage Status](https://coveralls.io/repos/github/xiusin/cache/badge.svg?branch=master)](https://coveralls.io/github/xiusin/cache?branch=master)
 
 Concurrency-safe golang caching library with expiration capabilities.
