@@ -30,23 +30,17 @@ mut:
 	type_id          int
 }
 
-[manualfree]
 fn new_cache_item[T](key string, data T, ttl time.Duration) &CacheItem {
-	now := time.now()
+	now := time.now() // Very slow (nearly 10 times), but still needed.
 	encode_data := json.encode(CacheData[T]{ data: data })
-	defer {
-		unsafe {
-			encode_data.free()
-		}
-	}
 	return &CacheItem{
 		key: key
 		ttl: ttl
-		created_on: now
-		last_accessed_on: now
-		access_count: 0
-		remove_expire_fn: []
 		type_id: T.idx
+		created_on: now
+		access_count: 0
+		last_accessed_on: now
+		remove_expire_fn: []
 		data: encode_data.bytes()
 	}
 }
