@@ -73,3 +73,6 @@ To run this example, go to examples/ and run:
 
 You can find a [few more examples here](https://github.com/xiusin/cache/tree/master/examples).
 Also see our test-cases in `cache_test.v` for further working examples.
+
+
+> Note: Restriction, currently does not support the type of `user.value("info")!.json[&Info]()!`
