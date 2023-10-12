@@ -3,16 +3,13 @@ module cache
 import time
 import log
 
-const err_key_not_found = error('Key not found in cache')
+const err_key_not_found = error('key not found in cache')
 
 [heap; noinit]
 pub struct CacheTable {
 mut:
-	max_table_key int
-	name          string
-	// 目前发现如果高速插入数据会导致频繁扩容，GC侧导致读取item失败而崩溃
-	// If there are too many keys, it may potentially cause a memory leak. Optimization is needed。
-	// GC Warning: Repeated allocation of very large block (appr. size 6860800): May lead to memory leak and poor performance
+	max_table_key    int
+	name             string
 	items            shared map[string]&CacheItem = map[string]&CacheItem{}
 	cleanup_timer    time.Time     = time.now()
 	cleanup_interval time.Duration = time.second
@@ -39,7 +36,7 @@ pub fn (mut ct CacheTable) exists(key string) bool {
 		item := unsafe { ct.items[key] }
 		if unsafe { item != nil } {
 			if item.expired() {
-				ct.delete_internal(key) or {}
+				ct.delete(key) or {}
 				return false
 			}
 			return true
@@ -78,18 +75,14 @@ pub fn (mut ct CacheTable) expiration_check() {
 		}
 
 		for key in expire_keys {
-			ct.delete_internal(key) or {}
+			ct.delete(key) or {}
 		}
 		ct.log('clear expired keys: ${expire_keys.len}')
 	}
 }
 
-pub fn (mut ct CacheTable) delete(key string) ! {
-	ct.delete_internal(key)!
-}
-
 [manualfree]
-fn (mut ct CacheTable) delete_internal(key string) ! {
+pub fn (mut ct CacheTable) delete(key string) ! {
 	if key !in ct.items {
 		return cache.err_key_not_found
 	}
@@ -115,6 +108,7 @@ fn (mut ct CacheTable) delete_internal(key string) ! {
 	item.mutex.runlock()
 }
 
+[inline]
 pub fn (mut ct CacheTable) add[T](key string, data T, ttl time.Duration) !&CacheItem[T] {
 	mut item := new_cache_item[T](key, &data, ttl)
 	return ct.add_internal(mut item)!
@@ -129,6 +123,7 @@ pub fn (mut ct CacheTable) not_found_add[T](key string, data T, ttl time.Duratio
 }
 
 // flush deletes all items from this cache table.
+[inline]
 pub fn (mut ct CacheTable) flush() {
 	lock ct.items {
 		for key, _ in ct.items {
