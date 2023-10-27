@@ -28,6 +28,7 @@ pub fn (mut c Cache) table(table string) !&CacheTable {
 
 		mut cache_table := &CacheTable{
 			name: table
+			debug: c.option.debug
 			cleanup_interval: c.option.cleanup_interval
 		}
 		c.caches[table] = cache_table

@@ -14,7 +14,13 @@ mut:
 	cleanup_timer    time.Time     = time.now()
 	cleanup_interval time.Duration = time.second
 	add_item_after   []fn (&CacheItem)
+	debug            bool
 	logger           &log.ThreadSafeLog = unsafe { nil }
+}
+
+struct ItemCount {
+	key   string
+	count u64
 }
 
 pub fn (mut ct CacheTable) set_logger(logger &log.ThreadSafeLog) {
@@ -22,7 +28,7 @@ pub fn (mut ct CacheTable) set_logger(logger &log.ThreadSafeLog) {
 }
 
 pub fn (mut ct CacheTable) log(message string) {
-	if unsafe { ct.logger != nil } {
+	if ct.debug && unsafe { ct.logger != nil } {
 		ct.logger.info(message)
 	}
 }
@@ -130,6 +136,7 @@ pub fn (mut ct CacheTable) flush() {
 			ct.items.delete(key)
 		}
 		ct.items.clear()
+		ct.log('flush ${ct.name}, items: ${ct.items.len}')
 	}
 }
 
@@ -143,7 +150,6 @@ pub fn (mut ct CacheTable) value(key string) !&CacheItem {
 			}
 		}
 	}
-
 	return cache.err_key_not_found
 }
 
@@ -166,11 +172,6 @@ pub fn (mut ct CacheTable) iter(callback fn (&CacheItem)) {
 			callback(v)
 		}
 	}
-}
-
-struct ItemCount {
-	key   string
-	count u64
 }
 
 pub fn (mut ct CacheTable) top_accessed(count i64) []&CacheItem {

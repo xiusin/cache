@@ -49,7 +49,6 @@ fn (item CacheItem) expired() bool {
 	if item.ttl == 0 {
 		return false
 	}
-
 	return time.since(item.last_accessed_on) >= item.ttl
 }
 
