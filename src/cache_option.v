@@ -2,9 +2,9 @@ module cache
 
 import time
 
-[params]
+@[params]
 pub struct CacheOption {
-pub mut:
+pub:
 	cleanup_interval time.Duration = time.second
 	max_table        int
 	max_memory       int
