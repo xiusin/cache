@@ -30,7 +30,7 @@ mut:
 	type_id          int
 }
 
-fn new_cache_item[T](key string, data T, ttl time.Duration) &CacheItem {
+fn new_cache_item[T](key string, data &T, ttl time.Duration) &CacheItem {
 	now := time.now() // Very slow (nearly 10x), but still needed.
 	encode_data := json.encode(CacheData[T]{ data: data })
 	return &CacheItem{
