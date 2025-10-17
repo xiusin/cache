@@ -11,12 +11,12 @@ pub interface CacheItemInterface {
 }
 
 // JSON library is unable to directly decode/encode the resulting string. Therefore, this structure is built-in to handle such cases.
-[noinit]
+@[noinit]
 pub struct CacheData[T] {
 	data T
 }
 
-[heap; noinit]
+@[heap; noinit]
 pub struct CacheItem {
 mut:
 	mutex            &sync.RwMutex = sync.new_rwmutex()

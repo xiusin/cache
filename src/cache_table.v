@@ -5,7 +5,7 @@ import log
 
 const err_key_not_found = error('key not found in cache')
 
-[heap; noinit]
+@[heap; noinit]
 pub struct CacheTable {
 mut:
 	max_table_key    int
@@ -87,7 +87,7 @@ pub fn (mut ct CacheTable) expiration_check() {
 	}
 }
 
-[manualfree]
+@[manualfree]
 pub fn (mut ct CacheTable) delete(key string) ! {
 	if key !in ct.items {
 		return cache.err_key_not_found
@@ -114,7 +114,7 @@ pub fn (mut ct CacheTable) delete(key string) ! {
 	item.mutex.runlock()
 }
 
-[inline]
+@[inline]
 pub fn (mut ct CacheTable) add[T](key string, data T, ttl time.Duration) !&CacheItem[T] {
 	mut item := new_cache_item[T](key, &data, ttl)
 	return ct.add_internal(mut item)!
@@ -129,7 +129,7 @@ pub fn (mut ct CacheTable) not_found_add[T](key string, data T, ttl time.Duratio
 }
 
 // flush deletes all items from this cache table.
-[inline]
+@[inline]
 pub fn (mut ct CacheTable) flush() {
 	lock ct.items {
 		for key, _ in ct.items {
