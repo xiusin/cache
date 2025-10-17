@@ -11,12 +11,12 @@ pub interface CacheItemInterface {
 }
 
 // JSON library is unable to directly decode/encode the resulting string. Therefore, this structure is built-in to handle such cases.
-[noinit]
+@[noinit]
 pub struct CacheData[T] {
 	data T
 }
 
-[heap; noinit]
+@[heap; noinit]
 pub struct CacheItem {
 mut:
 	mutex            &sync.RwMutex = sync.new_rwmutex()
@@ -30,7 +30,7 @@ mut:
 	type_id          int
 }
 
-fn new_cache_item[T](key string, data T, ttl time.Duration) &CacheItem {
+fn new_cache_item[T](key string, data &T, ttl time.Duration) &CacheItem {
 	now := time.now() // Very slow (nearly 10x), but still needed.
 	encode_data := json.encode(CacheData[T]{ data: data })
 	return &CacheItem{
